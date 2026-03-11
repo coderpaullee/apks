@@ -19,12 +19,23 @@ Do not use `apks` for:
 ## Publishing Steps
 
 1. Verify the APK source, package name, version, and file integrity.
-2. Compute the APK SHA256.
+2. Run `python3 scripts/generate_release_info.py` to compute the APK SHA256 and generate release metadata.
 3. Create a Git tag using `<package>-<version>`.
 4. Create a GitHub Release from that tag.
 5. Upload the APK as a Release asset.
-6. Copy the body template from [`.github/release-template.md`](../.github/release-template.md).
-7. Fill in the SHA256, source note, and ABI in the release body.
+6. Copy the generated release body, or use [`.github/release-template.md`](../.github/release-template.md).
+7. Confirm the release body matches the uploaded asset name and SHA256.
+
+If `--app-name`, `--package`, or `--version` are omitted, the script will try to read them from `AndroidManifest.xml` inside the APK. If the app label cannot be resolved from the manifest, the script falls back to the APK file name for the release title.
+
+Example:
+
+```bash
+python3 scripts/generate_release_info.py \
+  /path/to/VLC-Android-3.7.0-arm64-v8a.apk \
+  --abi arm64-v8a \
+  --uploaded-by PaulLee
+```
 
 ## Release Template
 
@@ -51,6 +62,7 @@ Notes: <optional notes>
 Copy-ready file:
 
 - [`.github/release-template.md`](../.github/release-template.md)
+- [`scripts/generate_release_info.py`](../scripts/generate_release_info.py)
 
 ## Asset Naming
 
