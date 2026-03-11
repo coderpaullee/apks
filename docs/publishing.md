@@ -23,7 +23,8 @@ Do not use `apks` for:
 3. Create a Git tag using `<package>-<version>`.
 4. Create a GitHub Release from that tag.
 5. Upload the APK as a Release asset.
-6. Record the SHA256, source note, and ABI in the release body.
+6. Copy the body template from [`.github/release-template.md`](../.github/release-template.md).
+7. Fill in the SHA256, source note, and ABI in the release body.
 
 ## Release Template
 
@@ -36,14 +37,20 @@ Recommended release title:
 Recommended release body:
 
 ```text
-Package: org.example.app
-Version: 1.2.3
-Asset: org.example.app-1.2.3.apk
+Package: <package.name>
+Version: <version>
+Asset: <package.name>-<version>.apk
 SHA256: <sha256>
-Source: Internal mirror from approved maintainer workflow
-ABI: universal
-Notes: Optional operator notes
+Source: <original source or internal note>
+ABI: <universal | arm64-v8a | armeabi-v7a | x86_64>
+Uploaded by: <maintainer name>
+Uploaded at: <YYYY-MM-DD>
+Notes: <optional notes>
 ```
+
+Copy-ready file:
+
+- [`.github/release-template.md`](../.github/release-template.md)
 
 ## Asset Naming
 

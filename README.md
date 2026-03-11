@@ -24,7 +24,6 @@ Those responsibilities stay in the separate `apk-sync` repository.
 - `README.md`: repository purpose and operator entry point
 - `docs/publishing.md`: how maintainers publish a new APK release
 - `docs/retention.md`: retention, replacement, and removal rules
-- `index/`: optional human-readable notes or future lightweight indexes
 
 ## Release Rules
 
