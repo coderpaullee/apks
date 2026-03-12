@@ -1,6 +1,6 @@
 # Publishing APKs
 
-This repository publishes APK binaries through GitHub Releases.
+This repository publishes APK and XAPK binaries through GitHub Releases.
 
 ## When to Use This Repository
 
@@ -18,15 +18,20 @@ Do not use `apks` for:
 
 ## Publishing Steps
 
-1. Verify the APK source, package name, version, and file integrity.
-2. Run `python3 scripts/generate_release_info.py` to compute the APK SHA256 and generate release metadata.
+1. Verify the package source, package name, version, and file integrity.
+2. Run `python3 scripts/generate_release_info.py` to compute the file SHA256 and generate release metadata.
 3. Create a Git tag using `<package>-<version>`.
 4. Create a GitHub Release from that tag.
-5. Upload the APK as a Release asset.
+5. Upload the package file as a Release asset.
 6. Copy the generated release body, or use [`.github/release-template.md`](../.github/release-template.md).
 7. Confirm the release body matches the uploaded asset name and SHA256.
 
-If `--app-name`, `--package`, or `--version` are omitted, the script will try to read them from `AndroidManifest.xml` inside the APK. If the app label cannot be resolved from the manifest, the script falls back to the APK file name for the release title.
+If `--app-name`, `--package`, or `--version` are omitted, the script will try to read them from the package file:
+
+- `.apk`: read from `AndroidManifest.xml`
+- `.xapk`: read from `manifest.json`, then fall back to the main APK inside the archive
+
+If the app label cannot be resolved, the script falls back to the package file name for the release title.
 
 Example:
 

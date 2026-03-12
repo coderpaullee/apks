@@ -2,11 +2,12 @@
 
 import argparse
 import hashlib
+import json
 import struct
 import zipfile
 from datetime import date
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Dict, Optional, Tuple
 
 RES_STRING_POOL_TYPE = 0x0001
 RES_XML_TYPE = 0x0003
@@ -23,9 +24,10 @@ def sha256_file(path: Path) -> str:
 
 
 def build_asset_name(package: str, version: str, abi: str) -> str:
-    if abi == "universal":
-        return f"{package}-{version}.apk"
-    return f"{package}-{version}-{abi}.apk"
+    extension = ".xapk" if abi == "xapk" else ".apk"
+    if abi in {"universal", "xapk"}:
+        return f"{package}-{version}{extension}"
+    return f"{package}-{version}-{abi}{extension}"
 
 
 def read_u16(data: bytes, offset: int) -> int:
@@ -77,16 +79,13 @@ def decode_string_pool(chunk: bytes) -> list[str]:
     return strings
 
 
-def parse_manifest_metadata(apk_path: Path) -> dict[str, str]:
-    with zipfile.ZipFile(apk_path) as apk_file:
-        manifest = apk_file.read("AndroidManifest.xml")
-
+def parse_binary_manifest(manifest: bytes) -> Dict[str, str]:
     if read_u16(manifest, 0) != RES_XML_TYPE:
         raise ValueError("AndroidManifest.xml is not in binary XML format")
 
     strings: list[str] = []
     offset = 8
-    metadata: dict[str, str] = {}
+    metadata: Dict[str, str] = {}
 
     while offset + 8 <= len(manifest):
         chunk_type = read_u16(manifest, offset)
@@ -151,31 +150,84 @@ def parse_manifest_metadata(apk_path: Path) -> dict[str, str]:
     return metadata
 
 
+def parse_manifest_metadata(apk_path: Path) -> Dict[str, str]:
+    with zipfile.ZipFile(apk_path) as apk_file:
+        manifest = apk_file.read("AndroidManifest.xml")
+
+    return parse_binary_manifest(manifest)
+
+
+def parse_xapk_metadata(package_path: Path) -> Dict[str, str]:
+    with zipfile.ZipFile(package_path) as archive:
+        names = archive.namelist()
+
+        if "manifest.json" in names:
+            manifest_json = json.loads(archive.read("manifest.json").decode("utf-8"))
+            metadata: Dict[str, str] = {}
+
+            package_name = manifest_json.get("package_name") or manifest_json.get("packageName")
+            version_name = manifest_json.get("version_name") or manifest_json.get("versionName")
+            app_name = manifest_json.get("name") or manifest_json.get("app_name")
+
+            if isinstance(package_name, str) and package_name.strip():
+                metadata["package"] = package_name.strip()
+            if isinstance(version_name, str) and version_name.strip():
+                metadata["version"] = version_name.strip()
+            elif isinstance(version_name, int):
+                metadata["version"] = str(version_name)
+            if isinstance(app_name, str) and app_name.strip():
+                metadata["app_name"] = app_name.strip()
+
+            if metadata.get("package") and metadata.get("version"):
+                return metadata
+
+        nested_apks = sorted(name for name in names if name.lower().endswith(".apk"))
+        if not nested_apks:
+            raise ValueError("XAPK does not contain manifest.json metadata or nested APK files")
+
+        primary_apk = next((name for name in nested_apks if name.startswith("base")), nested_apks[0])
+        nested_manifest = archive.read(primary_apk)
+
+    with zipfile.ZipFile(package_path) as archive:
+        with archive.open(primary_apk) as apk_handle:
+            apk_bytes = apk_handle.read()
+
+    from io import BytesIO
+    with zipfile.ZipFile(BytesIO(apk_bytes)) as nested_archive:
+        manifest = nested_archive.read("AndroidManifest.xml")
+
+    return parse_binary_manifest(manifest)
+
+
 def infer_metadata(
-    apk_path: Path,
+    package_path: Path,
     app_name: Optional[str],
     package: Optional[str],
     version: Optional[str],
 ) -> Tuple[str, str, str]:
-    manifest_metadata = parse_manifest_metadata(apk_path)
+    suffix = package_path.suffix.lower()
+    if suffix == ".xapk":
+        manifest_metadata = parse_xapk_metadata(package_path)
+    else:
+        manifest_metadata = parse_manifest_metadata(package_path)
 
     resolved_package = package or manifest_metadata.get("package")
     resolved_version = version or manifest_metadata.get("version")
-    resolved_app_name = app_name or manifest_metadata.get("app_name") or apk_path.stem
+    resolved_app_name = app_name or manifest_metadata.get("app_name") or package_path.stem
 
     if not resolved_package:
-        raise SystemExit("error: package not provided and could not be read from APK")
+        raise SystemExit("error: package not provided and could not be read from package file")
     if not resolved_version:
-        raise SystemExit("error: version not provided and could not be read from APK")
+        raise SystemExit("error: version not provided and could not be read from package file")
 
     return resolved_app_name, resolved_package, resolved_version
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Generate GitHub Release metadata for an APK asset"
+        description="Generate GitHub Release metadata for an APK or XAPK asset"
     )
-    parser.add_argument("apk_file", help="Path to the APK file")
+    parser.add_argument("apk_file", help="Path to the APK or XAPK file")
     parser.add_argument("--app-name", help="User-facing app name")
     parser.add_argument("--package", help="Android package name")
     parser.add_argument("--version", help="App version")
@@ -199,7 +251,9 @@ def main() -> int:
 
     apk_path = Path(args.apk_file).expanduser().resolve()
     if not apk_path.is_file():
-        raise SystemExit(f"error: APK file not found: {apk_path}")
+        raise SystemExit(f"error: package file not found: {apk_path}")
+    if apk_path.suffix.lower() not in {".apk", ".xapk"}:
+        raise SystemExit("error: package file must end with .apk or .xapk")
 
     app_name, package, version = infer_metadata(
         apk_path,
@@ -213,7 +267,7 @@ def main() -> int:
     title = f"{app_name} {version}"
     uploaded_at = date.today().isoformat()
 
-    print(f"APK file: {apk_path}")
+    print(f"Package file: {apk_path}")
     print(f"Original file name: {apk_path.name}")
     print(f"Suggested asset name: {asset_name}")
     print(f"Tag: {tag}")
